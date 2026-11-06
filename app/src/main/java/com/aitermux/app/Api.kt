@@ -22,8 +22,13 @@ object Api {
 
     fun post(url: String, key: String, body: String): String =
         http.newCall(builder(url, key).post(body.toRequestBody("application/json".toMediaType())).build()).execute().use {
-            val s = it.body!!.string(); if (!it.isSuccessful) error("HTTP ${it.code}: ${s.take(200)}"); s
+            val s = it.body!!.string(); if (!it.isSuccessful) error("HTTP ${it.code}: ${errMsg(s)}"); s
         }
+
+    private fun errMsg(s: String): String = runCatching {
+        val j = if (s.trim().startsWith("[")) JSONArray(s).getJSONObject(0) else JSONObject(s)
+        j.getJSONObject("error").getString("message")
+    }.getOrDefault(s.take(200))
 
     private fun v1(b: String) = if ("/v1" in b) b else "$b/v1"
     private fun isOllama(p: Prov) = p.kind == "ollama" || p.kind == "termux"
@@ -36,7 +41,7 @@ object Api {
             (0 until a.length()).map { a.getJSONObject(it) }.sortedByDescending { it.optString("modified_at") }.map { it.getString("name") }
         } else {
             val a = JSONObject(get("${v1(b)}/models", p.key)).getJSONArray("data")
-            (0 until a.length()).map { a.getJSONObject(it) }.sortedByDescending { it.optLong("created") }.map { it.getString("id") }
+            (0 until a.length()).map { a.getJSONObject(it) }.sortedWith(compareByDescending<JSONObject> { it.optLong("created") }.thenByDescending { it.getString("id") }).map { it.getString("id").removePrefix("models/") }
         }
     }
 
