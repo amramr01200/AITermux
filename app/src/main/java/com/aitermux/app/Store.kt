@@ -25,10 +25,22 @@ object Store {
     var speak by mutableStateOf(false)
     var autoOllama by mutableStateOf(false)
     var star by mutableStateOf<String?>(null)
+    val hidden = mutableStateListOf<String>()
+
+    fun hideModel(pid: String, m: String) {
+        hidden.add("$pid|$m")
+        val i = provs.indexOfFirst { it.id == pid }
+        if (i >= 0) provs[i] = provs[i].copy(models = provs[i].models - m, old = provs[i].old - m)
+        if (star == "$pid|$m") star = null
+        save()
+    }
 
     /** Keeps old models: anything that disappeared from the tool goes to `old` and stays usable/listed. */
-    fun merge(p: Prov, fresh: List<String>): Prov =
-        p.copy(models = fresh, old = (p.models + p.old).filter { it !in fresh }.distinct())
+    fun merge(p: Prov, all: List<String>): Prov {
+        val fresh = all.filter { p.id + "|" + it !in hidden }
+        return p.copy(models = fresh, old = (p.models + p.old)
+            .filter { it !in fresh && it.removePrefix("models/") !in fresh && p.id + "|" + it !in hidden }.distinct())
+    }
 
     fun init(c: Context) { f = File(c.filesDir, "data.json"); load() }
 
@@ -44,6 +56,7 @@ object Store {
         val o = JSONObject(exportJson())
         o.put("star", star ?: "").put("lang", lang).put("speak", speak).put("auto", autoOllama)
         o.put("hosts", JSONArray(hosts.toList()))
+        o.put("hidden", JSONArray(hidden.toList()))
         o.put("tokens", JSONObject(tokens.toMap())).put("clientIds", JSONObject(clientIds.toMap()))
         o.put("chats", JSONArray().also { a ->
             chats.forEach { c ->
@@ -79,6 +92,7 @@ object Store {
             star = o.optString("star").ifBlank { null }; lang = o.optString("lang", "ar"); speak = o.optBoolean("speak"); autoOllama = o.optBoolean("auto")
             o.optJSONArray("hosts")?.let { h -> hosts.clear(); for (i in 0 until h.length()) hosts.add(h.getString(i)) }
             loadLib(o)
+            o.optJSONArray("hidden")?.let { h -> for (i in 0 until h.length()) hidden.add(h.getString(i)) }
             o.optJSONObject("tokens")?.let { t -> for (k in t.keys()) tokens[k] = t.getString(k) }
             o.optJSONObject("clientIds")?.let { t -> for (k in t.keys()) clientIds[k] = t.getString(k) }
             o.optJSONArray("chats")?.let { a ->
