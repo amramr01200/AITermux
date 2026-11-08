@@ -11,7 +11,17 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.9 }
-      - run: gradle assembleDebug --stacktrace
+      - name: Build
+        run: |
+          set +e
+          gradle assembleDebug --console=plain > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "=========== ERRORS ==========="
+            grep -E "^e: |error:|What went wrong" -A3 build.log | head -60
+            echo "=============================="
+          fi
+          exit $code
       - uses: actions/upload-artifact@v4
         with:
           name: AI-Termux-APK
